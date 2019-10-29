@@ -4,6 +4,8 @@ import logging
 import os
 import subprocess
 
+from collections import defaultdict
+
 
 class ClangPostProcess(object):
     def __init__(self, build_dir, src_dir, list_file=None):
@@ -75,14 +77,21 @@ class ClangPostProcess(object):
             for file in walk_files:
                 if fnmatch.fnmatch(file, "*.cc"):
                     f_path = os.path.abspath(os.path.join(root, file))
-                    if not list_file:
+                    if list_file and file in files_from_list:
                         self.files.append(f_path)
                         logging.info("'{}' added to run".format(f_path))
-                    elif file in files_from_list:
+                        files_from_list.remove(file)
+                    elif list_file and file not in files_from_list:
+                        pass
+                    elif not list_file:
                         self.files.append(f_path)
                         logging.info("'{}' added to run".format(f_path))
                     else:
-                        pass
+                        logging.error("Unknown error condition")
+
+        if len(files_from_list) > 0:
+            for file in files_from_list:
+                logging.error("'{}' file not found - skipping".format(file))
 
     @staticmethod
     def run_exe(caller, exe_path, f_path):
@@ -166,29 +175,27 @@ class ClangPostProcess(object):
         elif "line" in position_str:
             line_no = position_str.split(":")[1]
         else:
-            line_no = 0
+            line_no = None
 
-        d = {"name": name,
-             "namespace": namespace,
-             "line": line_no}
+        d = {"name": name, "namespace": namespace, "line": line_no}
 
         if "is static local:" in line:
-            static_local = line.split(":")[-1]
+            static_local = int(line.split(":")[-1].strip())
             if static_local == 1:
-                d["static-local"] = True
+                d["is-static"] = True
 
         return d
 
     def process_global_storage(self, stream, f_path):
         lst = self.process_output(stream, f_path)
-        for entry in lst:
-            entry["has-global-storage"] = True
+        for d in lst:
+            d["has-global-storage"] = True
         return lst
 
     def process_has_local_qualifiers(self, stream, f_path):
         lst = self.process_output(stream, f_path)
-        for entry in lst:
-            entry["has-local-qualifiers"] = True
+        for d in lst:
+            d["has-local-qualifier"] = True
         return lst
 
     def process_single_file(self, f_path):
@@ -211,23 +218,29 @@ class ClangPostProcess(object):
                             var_merged = True
                 if not var_merged:
                     main_lst.append(d_var)
+
+        for idx, d in enumerate(main_lst):
+            main_lst[idx] = defaultdict(str, d)
         return main_lst
 
     def process(self):
         with open("output.csv", "a+") as f:
-            f.write("var-name, namespace, line-no")
+            f.write("var-name,namespace,line-no,is-static,has-local-qualifier,has-global-storage\n")
             for file in self.files:
                 try:
                     logging.info("{} : started".format(file))
                     summary = self.process_single_file(file)
                     for val in summary:
-                        f.write("{},{},{}\n".format(val["name"],
-                                                    val["namespace"],
-                                                    val["line"]))
+                        f.write("{},{},{},{},{},{}\n".format(val["name"],
+                                                             val["namespace"],
+                                                             val["line"],
+                                                             val['is-static'],
+                                                             val['has-local-qualifier'],
+                                                             val['has-global-storage']))
+
                     logging.info("{} : completed".format(file))
                 except:
                     logging.info("{} : failed".format(file))
-                    break
 
 
 if __name__ == "__main__":
