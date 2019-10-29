@@ -1,12 +1,88 @@
 import argparse
 import fnmatch
+import logging
 import os
 import subprocess
 
 
 class ClangPostProcess(object):
-    def __init__(self, *args):
-        self.build_dir = args[1]
+    def __init__(self, build_dir, src_dir, list_file=None):
+
+        logging.basicConfig(filename='clang-post-process.log',
+                            filemode='w',
+                            format='%(name)s - %(levelname)s - %(message)s',
+                            level=logging.INFO)
+
+        self.build_dir = build_dir
+        self.src_dir = src_dir
+
+        class Method(object):
+            def __init__(self):
+                self.name = None
+                self.exe = None
+
+        self.global_storage = Method()
+        self.has_local_qualifiers = Method()
+        self.has_local_storage = Method()
+        self.is_static_storage_cls = Method()
+
+        # check hasGlobalStorage
+        self.global_storage.name = "global-detect-hasGlobalStorage"
+        self.global_storage.exe = os.path.join(self.build_dir, "apps", self.global_storage.name)
+
+        if not os.path.exists(self.global_storage.exe):
+            raise SystemExit("'{}' exe does not exist".format(self.global_storage.name))
+        else:
+            logging.info("'{}' exe found".format(self.global_storage.name))
+
+        # check hasLocalQualifiers
+        self.has_local_qualifiers.name = "global-detect-hasLocalQualifiers"
+        self.has_local_qualifiers.exe = os.path.join(self.build_dir, "apps", self.has_local_qualifiers.name)
+
+        if not os.path.exists(self.has_local_qualifiers.exe):
+            raise SystemExit("'{}' exe does not exist".format(self.has_local_qualifiers.name))
+        else:
+            logging.info("'{}' exe found".format(self.has_local_qualifiers.name))
+
+        # check hasLocalStorage
+        self.has_local_storage.name = "global-detect-hasLocalStorage"
+        self.has_local_storage.exe = os.path.join(self.build_dir, "apps", self.has_local_storage.name)
+
+        if not os.path.exists(self.has_local_storage.exe):
+            raise SystemExit("'{}' exe does not exist".format(self.has_local_storage.name))
+        else:
+            logging.info("'{}' exe found".format(self.has_local_storage.name))
+
+        # check isStaticStorageClass
+        self.is_static_storage_cls.name = "global-detect-isStaticStorageClass"
+        self.is_static_storage_cls.exe = os.path.join(self.build_dir, "apps", self.is_static_storage_cls.name)
+
+        if not os.path.exists(self.is_static_storage_cls.exe):
+            raise SystemExit("'{}' exe does not exist".format(self.is_static_storage_cls.name))
+        else:
+            logging.info("'{}' exe found".format(self.is_static_storage_cls.name))
+
+        # read files from list file if present
+        files_from_list = []
+        if list_file:
+            with open(list_file, 'r') as f:
+                for line in f:
+                    files_from_list.append(line.strip("\n"))
+
+        # load files to run
+        self.files = []
+        for root, dirs, walk_files in os.walk(self.src_dir):
+            for file in walk_files:
+                if fnmatch.fnmatch(file, "*.cc"):
+                    f_path = os.path.abspath(os.path.join(root, file))
+                    if not list_file:
+                        self.files.append(f_path)
+                        logging.info("'{}' added to run".format(f_path))
+                    elif file in files_from_list:
+                        self.files.append(f_path)
+                        logging.info("'{}' added to run".format(f_path))
+                    else:
+                        pass
 
     @staticmethod
     def run_exe(caller, exe_path, f_path):
@@ -18,14 +94,14 @@ class ClangPostProcess(object):
                 "-extra-arg=-I/usr/local/opt/llvm@7/lib/clang/7.1.0/include",
                 "{}".format(f_path)]
 
-        print(" ".join([exe_path,
-                        args[0],
-                        args[1],
-                        args[2],
-                        args[3],
-                        args[4],
-                        args[5],
-                        args[6]]))
+        logging.debug(" ".join([exe_path,
+                                args[0],
+                                args[1],
+                                args[2],
+                                args[3],
+                                args[4],
+                                args[5],
+                                args[6]]))
 
         try:
             return subprocess.check_output([exe_path,
@@ -39,23 +115,23 @@ class ClangPostProcess(object):
                                            shell=False)
         except:
             f_name = f_path.split("/")[-1]
-            print("Failed on caller: '{}' for file: {}".format(caller, f_name))
+            logging.info("Failed on caller: '{}' for file: {}".format(caller, f_name))
 
     def run_has_global_storage(self, f_path):
-        exe_path = "/Users/mmitchel/Projects/clang-refactor/build/apps/global-detect-hasGlobalStorage"
-        return self.run_exe("hasGlobalStorage", exe_path, f_path)
+        logging.info("Running: {}".format(self.global_storage.name))
+        return self.run_exe(self.global_storage.name, self.global_storage.exe, f_path)
 
     def run_has_local_qualifiers(self, f_path):
-        exe_path = "/Users/mmitchel/Projects/clang-refactor/build/apps/global-detect-hasLocalQualifiers"
-        return self.run_exe("hasLocalQualifiers", exe_path, f_path)
+        logging.info("Running: {}".format(self.has_local_qualifiers.name))
+        return self.run_exe(self.has_local_qualifiers.name, self.has_local_qualifiers.exe, f_path)
 
     def run_has_local_storage(self, f_path):
-        exe_path = "/Users/mmitchel/Projects/clang-refactor/build/apps/global-detect-hasLocalStorage"
-        return self.run_exe("hasLocalStorage", exe_path, f_path)
+        logging.info("Running: {}".format(self.has_local_storage.name))
+        return self.run_exe(self.has_local_storage.name, self.has_local_storage.exe, f_path)
 
     def run_is_static_storage_class(self, f_path):
-        exe_path = "/Users/mmitchel/Projects/clang-refactor/build/apps/global-detect-isStaticStorageClass"
-        return self.run_exe("isStaticStorageClass", exe_path, f_path)
+        logging.info("Running: {}".format(self.is_static_storage_cls.name))
+        return self.run_exe(self.is_static_storage_cls.name, self.is_static_storage_cls.exe, f_path)
 
     def process_output(self, stream, f_path):
         f_name = f_path.split('/')[-1]
@@ -74,7 +150,6 @@ class ClangPostProcess(object):
     @staticmethod
     def process_line(line):
         line = line.replace("\'", "\"")
-        print(line)
 
         name = line.split("\"")[1]
         namespace = ""
@@ -105,14 +180,21 @@ class ClangPostProcess(object):
         return d
 
     def process_global_storage(self, stream, f_path):
-        glob_lst = self.process_output(stream, f_path)
-        for entry in glob_lst:
+        lst = self.process_output(stream, f_path)
+        for entry in lst:
             entry["has-global-storage"] = True
-        return glob_lst
+        return lst
+
+    def process_has_local_qualifiers(self, stream, f_path):
+        lst = self.process_output(stream, f_path)
+        for entry in lst:
+            entry["has-local-qualifiers"] = True
+        return lst
 
     def process_single_file(self, f_path):
         glob_store_lst = self.process_global_storage(self.run_has_global_storage(f_path), f_path)
-        return self.merge_lists(glob_store_lst)
+        local_quals_lst = self.process_has_local_qualifiers(self.run_has_local_qualifiers(f_path), f_path)
+        return self.merge_lists(glob_store_lst, local_quals_lst)
 
     @staticmethod
     def merge_lists(*args):
@@ -131,21 +213,21 @@ class ClangPostProcess(object):
                     main_lst.append(d_var)
         return main_lst
 
-    def process_all(self):
-        cc_dir = "/Users/mmitchel/Projects/EnergyPlus/dev/develop/src/EnergyPlus"
-        for root, dirs, files in os.walk(cc_dir):
-            for file in files:
-                if fnmatch.fnmatch(file, "*.cc"):
-                    try:
-                        var_list = self.process_single_file(os.path.abspath(os.path.join(root, file)))
-                        with open("output.csv", "a+") as f:
-                            for entry in var_list:
-                                f.write("{},{},{}\n".format(entry["name"], entry["namespace"], entry["line"]))
-                        print("{} : completed".format(file))
-                    except:
-                        print("{} : failed".format(file))
+    def process(self):
+        with open("output.csv", "a+") as f:
+            f.write("var-name, namespace, line-no")
+            for file in self.files:
+                try:
+                    logging.info("{} : started".format(file))
+                    summary = self.process_single_file(file)
+                    for val in summary:
+                        f.write("{},{},{}\n".format(val["name"],
+                                                    val["namespace"],
+                                                    val["line"]))
+                    logging.info("{} : completed".format(file))
+                except:
+                    logging.info("{} : failed".format(file))
                     break
-                break
 
 
 if __name__ == "__main__":
@@ -165,8 +247,8 @@ if __name__ == "__main__":
     elif results.source_dir is None:
         raise SystemExit("source-dir '-s' argument required")
     elif results.list_file is None:
-        P = ClangPostProcess(results.build_dir, results.src_dir)
-        P.process_all()
+        P = ClangPostProcess(results.build_dir, results.source_dir)
+        P.process()
     else:
-        P = ClangPostProcess(results.build_dir, results.src_dir, results.list_file)
-        P.process_all()
+        P = ClangPostProcess(results.build_dir, results.source_dir, results.list_file)
+        P.process()
