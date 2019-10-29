@@ -8,15 +8,19 @@ from collections import defaultdict
 
 
 class ClangPostProcess(object):
-    def __init__(self, build_dir, src_dir, list_file=None):
+    def __init__(self, source_dir, list_file=None, output_dir=None):
 
         logging.basicConfig(filename='clang-post-process.log',
                             filemode='w',
                             format='%(name)s - %(levelname)s - %(message)s',
                             level=logging.INFO)
 
-        self.build_dir = build_dir
-        self.src_dir = src_dir
+        self.exe_dir = os.path.normpath(os.path.join(os.path.abspath(__file__), "..", "..", "bin"))
+        self.src_dir = source_dir
+        if output_dir:
+            self.output_dir = output_dir
+        else:
+            self.output_dir = "output.csv"
 
         class Method(object):
             def __init__(self):
@@ -30,7 +34,7 @@ class ClangPostProcess(object):
 
         # check hasGlobalStorage
         self.global_storage.name = "global-detect-hasGlobalStorage"
-        self.global_storage.exe = os.path.join(self.build_dir, "apps", self.global_storage.name)
+        self.global_storage.exe = os.path.join(self.exe_dir, self.global_storage.name)
 
         if not os.path.exists(self.global_storage.exe):
             raise SystemExit("'{}' exe does not exist".format(self.global_storage.name))
@@ -39,7 +43,7 @@ class ClangPostProcess(object):
 
         # check hasLocalQualifiers
         self.has_local_qualifiers.name = "global-detect-hasLocalQualifiers"
-        self.has_local_qualifiers.exe = os.path.join(self.build_dir, "apps", self.has_local_qualifiers.name)
+        self.has_local_qualifiers.exe = os.path.join(self.exe_dir, self.has_local_qualifiers.name)
 
         if not os.path.exists(self.has_local_qualifiers.exe):
             raise SystemExit("'{}' exe does not exist".format(self.has_local_qualifiers.name))
@@ -48,7 +52,7 @@ class ClangPostProcess(object):
 
         # check hasLocalStorage
         self.has_local_storage.name = "global-detect-hasLocalStorage"
-        self.has_local_storage.exe = os.path.join(self.build_dir, "apps", self.has_local_storage.name)
+        self.has_local_storage.exe = os.path.join(self.exe_dir, self.has_local_storage.name)
 
         if not os.path.exists(self.has_local_storage.exe):
             raise SystemExit("'{}' exe does not exist".format(self.has_local_storage.name))
@@ -57,7 +61,7 @@ class ClangPostProcess(object):
 
         # check isStaticStorageClass
         self.is_static_storage_cls.name = "global-detect-isStaticStorageClass"
-        self.is_static_storage_cls.exe = os.path.join(self.build_dir, "apps", self.is_static_storage_cls.name)
+        self.is_static_storage_cls.exe = os.path.join(self.exe_dir, self.is_static_storage_cls.name)
 
         if not os.path.exists(self.is_static_storage_cls.exe):
             raise SystemExit("'{}' exe does not exist".format(self.is_static_storage_cls.name))
@@ -100,8 +104,7 @@ class ClangPostProcess(object):
                 "-extra-arg=-I/usr/local/opt/llvm@7/include/c++/",
                 "-extra-arg=-I/usr/local/opt/llvm@7/include/c++/v1",
                 "-extra-arg=-I/usr/local/opt/llvm@7//lib/clang/7.0.0/include/",
-                "-extra-arg=-I/usr/local/opt/llvm@7/lib/clang/7.1.0/include",
-                "{}".format(f_path)]
+                "-extra-arg=-I/usr/local/opt/llvm@7/lib/clang/7.1.0/include"]
 
         logging.debug(" ".join([exe_path,
                                 args[0],
@@ -109,8 +112,7 @@ class ClangPostProcess(object):
                                 args[2],
                                 args[3],
                                 args[4],
-                                args[5],
-                                args[6]]))
+                                args[5]]))
 
         try:
             return subprocess.check_output([exe_path,
@@ -120,11 +122,11 @@ class ClangPostProcess(object):
                                             args[3],
                                             args[4],
                                             args[5],
-                                            args[6]],
+                                            f_path],
                                            shell=False)
         except:
             f_name = f_path.split("/")[-1]
-            logging.info("Failed on caller: '{}' for file: {}".format(caller, f_name))
+            logging.error("Failed on caller: '{}' for file: {}".format(caller, f_name))
 
     def run_has_global_storage(self, f_path):
         logging.info("Running: {}".format(self.global_storage.name))
@@ -142,7 +144,7 @@ class ClangPostProcess(object):
         logging.info("Running: {}".format(self.is_static_storage_cls.name))
         return self.run_exe(self.is_static_storage_cls.name, self.is_static_storage_cls.exe, f_path)
 
-    def process_output(self, stream, f_path):
+    def process_output(self, stream, f_path, method):
         f_name = f_path.split('/')[-1]
         lines = stream.decode('utf-8').split('\n')
         start_idx = 0
@@ -153,11 +155,11 @@ class ClangPostProcess(object):
         var_lst = []
         for idx in range(start_idx, len(lines) - 1):
             line = lines[idx]
-            var_lst.append(self.process_line(line))
+            var_lst.append(self.process_line(line, method))
         return var_lst
 
     @staticmethod
-    def process_line(line):
+    def process_line(line, method):
         line = line.replace("\'", "\"")
 
         name = line.split("\"")[1]
@@ -177,7 +179,7 @@ class ClangPostProcess(object):
         else:
             line_no = None
 
-        d = {"name": name, "namespace": namespace, "line": line_no}
+        d = {"name": name, "namespace": namespace, "line": line_no, method: True}
 
         if "is static local:" in line:
             static_local = int(line.split(":")[-1].strip())
@@ -186,22 +188,17 @@ class ClangPostProcess(object):
 
         return d
 
-    def process_global_storage(self, stream, f_path):
-        lst = self.process_output(stream, f_path)
-        for d in lst:
-            d["has-global-storage"] = True
-        return lst
-
-    def process_has_local_qualifiers(self, stream, f_path):
-        lst = self.process_output(stream, f_path)
-        for d in lst:
-            d["has-local-qualifier"] = True
-        return lst
-
     def process_single_file(self, f_path):
-        glob_store_lst = self.process_global_storage(self.run_has_global_storage(f_path), f_path)
-        local_quals_lst = self.process_has_local_qualifiers(self.run_has_local_qualifiers(f_path), f_path)
-        return self.merge_lists(glob_store_lst, local_quals_lst)
+        glob_store_lst = self.process_output(self.run_has_global_storage(f_path),
+                                             f_path, 'has-global-storage')
+        local_quals_lst = self.process_output(self.run_has_local_qualifiers(f_path),
+                                              f_path, 'has-local-qualifier')
+        local_storage_lst = self.process_output(self.run_has_local_storage(f_path),
+                                                f_path, 'has-local-storage')
+        static_storage_lst = self.process_output(self.run_is_static_storage_class(f_path),
+                                                 f_path, 'is-static-storage-cls')
+
+        return self.merge_lists(glob_store_lst, local_quals_lst, local_storage_lst, static_storage_lst)
 
     @staticmethod
     def merge_lists(*args):
@@ -224,44 +221,49 @@ class ClangPostProcess(object):
         return main_lst
 
     def process(self):
-        with open("output.csv", "a+") as f:
-            f.write("var-name,namespace,line-no,is-static,has-local-qualifier,has-global-storage\n")
+        with open(self.output_dir, "a+") as f:
+            f.write("name,"
+                    "namespace,"
+                    "line-no,"
+                    "is-static,"
+                    "has-global-storage,"
+                    "has-local-qualifier,"
+                    "has-local-storage,"
+                    "is-static-storage-cls"
+                    "\n")
             for file in self.files:
                 try:
                     logging.info("{} : started".format(file))
-                    summary = self.process_single_file(file)
-                    for val in summary:
-                        f.write("{},{},{},{},{},{}\n".format(val["name"],
-                                                             val["namespace"],
-                                                             val["line"],
-                                                             val['is-static'],
-                                                             val['has-local-qualifier'],
-                                                             val['has-global-storage']))
+                    single_file_output = self.process_single_file(file)
+                    for d in single_file_output:
+                        f.write("{},{},{},{},{},{}\n".format(d["name"],
+                                                             d["namespace"],
+                                                             d["line-no"],
+                                                             d['is-static'],
+                                                             d['has-global-storage'],
+                                                             d['has-local-qualifier'],
+                                                             d['has-local-storage'],
+                                                             d['is-static-storage-cls']))
 
                     logging.info("{} : completed".format(file))
                 except:
-                    logging.info("{} : failed".format(file))
+                    logging.error("{} : failed".format(file))
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-b', dest="build_dir", help="path to the clang-format build dir")
     parser.add_argument('-s', dest="source_dir", help="path to the EnergyPlus /src/EnergyPlus dir")
+    parser.add_argument('-o', dest="output_dir", help="path to the output directory")
     parser.add_argument('-l', dest="list_file",
                         help="(optional) path to list file with .cc file names to process. If list file not given, "
                              "all .cc files in /src/EnergyPlus will be processed.")
 
     results = parser.parse_args()
 
-    if results.build_dir is None:
-        raise SystemExit("build-dir '-b' argument required")
-    elif results.source_dir is None:
+    if results.source_dir is None:
         raise SystemExit("source-dir '-s' argument required")
-    elif results.list_file is None:
-        P = ClangPostProcess(results.build_dir, results.source_dir)
-        P.process()
     else:
-        P = ClangPostProcess(results.build_dir, results.source_dir, results.list_file)
+        P = ClangPostProcess(source_dir=results.source_dir, list_file=results.list_file, output_dir=results.output_dir)
         P.process()
