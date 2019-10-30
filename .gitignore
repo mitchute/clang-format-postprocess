@@ -3,6 +3,7 @@
 *.csv
 .idea
 runfiles.txt
+a.out
 
 __pycache__/
 *.py[cod]

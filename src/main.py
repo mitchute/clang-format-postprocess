@@ -79,7 +79,7 @@ class ClangPostProcess(object):
         self.files = []
         for root, dirs, walk_files in os.walk(self.src_dir):
             for file in walk_files:
-                if fnmatch.fnmatch(file, "*.cc"):
+                if fnmatch.fnmatch(file, "*.cc") or fnmatch.fnmatch(file, "*.cpp"):
                     f_path = os.path.abspath(os.path.join(root, file))
                     if list_file and file in files_from_list:
                         self.files.append(f_path)
@@ -96,6 +96,8 @@ class ClangPostProcess(object):
         if len(files_from_list) > 0:
             for file in files_from_list:
                 logging.error("'{}' file not found - skipping".format(file))
+
+        self.prev_line_no = 0
 
     @staticmethod
     def run_exe(caller, exe_path, f_path):
@@ -158,8 +160,7 @@ class ClangPostProcess(object):
             var_lst.append(self.process_line(line, method))
         return var_lst
 
-    @staticmethod
-    def process_line(line, method):
+    def process_line(self, line, method):
         line = line.replace("\'", "\"")
 
         name = line.split("\"")[1]
@@ -174,12 +175,14 @@ class ClangPostProcess(object):
 
         if ".cc" in position_str:
             line_no = position_str.split(":")[1]
+            self.prev_line_no = line_no
         elif "line" in position_str:
             line_no = position_str.split(":")[1]
+            self.prev_line_no = line_no
         else:
-            line_no = None
+            line_no = self.prev_line_no
 
-        d = {"name": name, "namespace": namespace, "line": line_no, method: True}
+        d = {"name": name, "namespace": namespace, "line-no": line_no, method: True}
 
         if "is static local:" in line:
             static_local = int(line.split(":")[-1].strip())
@@ -210,7 +213,7 @@ class ClangPostProcess(object):
                     pass
                 else:
                     for main_idx, d_var_main in enumerate(main_lst):
-                        if (d_var_main["name"] == d_var["name"]) and (d_var_main["line"] == d_var["line"]):
+                        if (d_var_main["name"] == d_var["name"]) and (d_var_main["line-no"] == d_var["line-no"]):
                             main_lst[main_idx] = {**d_var_main, **d_var}
                             var_merged = True
                 if not var_merged:
@@ -222,7 +225,8 @@ class ClangPostProcess(object):
 
     def process(self):
         with open(self.output_dir, "a+") as f:
-            f.write("name,"
+            f.write("file,"
+                    "name,"
                     "namespace,"
                     "line-no,"
                     "is-static,"
@@ -232,18 +236,20 @@ class ClangPostProcess(object):
                     "is-static-storage-cls"
                     "\n")
             for file in self.files:
+                f_name = file.split('/')[-1]
                 try:
                     logging.info("{} : started".format(file))
                     single_file_output = self.process_single_file(file)
                     for d in single_file_output:
-                        f.write("{},{},{},{},{},{}\n".format(d["name"],
-                                                             d["namespace"],
-                                                             d["line-no"],
-                                                             d['is-static'],
-                                                             d['has-global-storage'],
-                                                             d['has-local-qualifier'],
-                                                             d['has-local-storage'],
-                                                             d['is-static-storage-cls']))
+                        f.write("{},{},{},{},{},{},{},{},{}\n".format(f_name,
+                                                                      d["name"],
+                                                                      d["namespace"],
+                                                                      d["line-no"],
+                                                                      d['is-static'],
+                                                                      d['has-global-storage'],
+                                                                      d['has-local-qualifier'],
+                                                                      d['has-local-storage'],
+                                                                      d['is-static-storage-cls']))
 
                     logging.info("{} : completed".format(file))
                 except:
