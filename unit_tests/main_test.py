@@ -2,7 +2,7 @@ import unittest
 import tempfile
 import os
 
-from src.main import ClangPostProcess
+from src.process_clang import ClangPostProcess
 
 class TestMain(unittest.TestCase):
 

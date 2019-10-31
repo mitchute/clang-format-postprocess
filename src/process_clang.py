@@ -1,26 +1,18 @@
 import argparse
-import fnmatch
 import logging
 import os
 import subprocess
-
 from collections import defaultdict
 
+from src.base import Base
 
-class ClangPostProcess(object):
+
+class ClangPostProcess(Base):
     def __init__(self, source_dir, list_file=None, output_dir=None):
 
-        logging.basicConfig(filename='clang-post-process.log',
-                            filemode='w',
-                            format='%(name)s - %(levelname)s - %(message)s',
-                            level=logging.INFO)
+        Base.__init__(self, source_dir=source_dir, list_file=list_file, output_dir=output_dir)
 
         self.exe_dir = os.path.normpath(os.path.join(os.path.abspath(__file__), "..", "..", "bin"))
-        self.src_dir = source_dir
-        if output_dir:
-            self.output_dir = output_dir
-        else:
-            self.output_dir = "output.csv"
 
         class Method(object):
             def __init__(self):
@@ -67,35 +59,6 @@ class ClangPostProcess(object):
             raise SystemExit("'{}' exe does not exist".format(self.is_static_storage_cls.name))
         else:
             logging.info("'{}' exe found".format(self.is_static_storage_cls.name))
-
-        # read files from list file if present
-        files_from_list = []
-        if list_file:
-            with open(list_file, 'r') as f:
-                for line in f:
-                    files_from_list.append(line.strip("\n"))
-
-        # load files to run
-        self.files = []
-        for root, dirs, walk_files in os.walk(self.src_dir):
-            for file in walk_files:
-                if fnmatch.fnmatch(file, "*.cc") or fnmatch.fnmatch(file, "*.cpp"):
-                    f_path = os.path.abspath(os.path.join(root, file))
-                    if list_file and file in files_from_list:
-                        self.files.append(f_path)
-                        logging.info("'{}' added to run".format(f_path))
-                        files_from_list.remove(file)
-                    elif list_file and file not in files_from_list:
-                        pass
-                    elif not list_file:
-                        self.files.append(f_path)
-                        logging.info("'{}' added to run".format(f_path))
-                    else:
-                        logging.error("Unknown error condition")
-
-        if len(files_from_list) > 0:
-            for file in files_from_list:
-                logging.error("'{}' file not found - skipping".format(file))
 
         self.prev_line_no = 0
 
