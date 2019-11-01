@@ -232,7 +232,7 @@ if __name__ == "__main__":
     results = parser.parse_args()
 
     if results.source_dir is None:
-        raise SystemExit("source-dir '-s' argument required")
+        raise SystemExit("source_dir '-s' argument required")
     else:
         P = ClangPostProcess(source_dir=results.source_dir, list_file=results.list_file, output_dir=results.output_dir)
         P.process()

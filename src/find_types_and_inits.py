@@ -66,19 +66,42 @@ class TypeInitFinder(Base):
                 break
 
         # common ep types
-        ep_types = ["Array1D_int",
-                    "Array1D_str",
-                    "Array1D_bool",
-                    "Real64",
-                    "int",
-                    "bool",
-                    "std::string"]
+        ep_types = ["Array1D_int ",
+                    "Array1D_string ",
+                    "Array1D_bool ",
+                    "Real64 ",
+                    "int ",
+                    "bool ",
+                    "std::string ",
+                    "ObjexxFCL::gio::Fmt "]
 
         # get common ep types
+        chars = list(raw_cpp)
+        comment_char_idxs = []
+
+        for idx, ch in enumerate(chars):
+            if ch == "\"":
+                comment_char_idxs.append(idx)
+
+        comments = []
+        for idx in range(0, len(comment_char_idxs), 2):
+            comments.append("".join(chars[comment_char_idxs[idx]: comment_char_idxs[idx + 1] + 1]))
+
+        basic_type = False
+
         if "<" not in raw_cpp:
+            basic_type = True
+        else:
+            for c in comments:
+                if "<" in c:
+                    basic_type = True
+
+        if raw_cpp.count(" ") == 1:
+            cpp_type = raw_cpp.split(" ")[0]
+        elif basic_type:
             for idx, ep_type in enumerate(ep_types):
                 if ep_type in raw_cpp:
-                    cpp_type = ep_type
+                    cpp_type = ep_type.strip()
                     break
         else:
             # try to determine other types
@@ -136,12 +159,12 @@ class TypeInitFinder(Base):
         elif init_val == "false":
             init_val = False
         elif "," in init_val \
-            or "{" in init_val \
-            or "*" in init_val \
-            or "/" in init_val \
-            or "+" in init_val \
-            or "-" in init_val \
-            or "\"" in init_val:
+                or "{" in init_val \
+                or "*" in init_val \
+                or "/" in init_val \
+                or "+" in init_val \
+                or "-" in init_val \
+                or "\"" in init_val:
             pass
         elif "" == init_val:
             pass
@@ -149,7 +172,10 @@ class TypeInitFinder(Base):
             try:
                 init_val = int(init_val)
             except ValueError:
-                init_val = float(init_val)
+                try:
+                    init_val = float(init_val)
+                except:
+                    pass
             except:
                 pass
 
@@ -209,7 +235,7 @@ if __name__ == "__main__":
     results = parser.parse_args()
 
     if results.source_dir is None:
-        raise SystemExit("source-dir '-s' argument required")
+        raise SystemExit("source_dir '-s' argument required")
     else:
         P = TypeInitFinder(source_dir=results.source_dir,
                            preprocess_csv=results.preprocess_csv,
